@@ -29,6 +29,10 @@ def handle_adj(adj, sample_num):
             sampled_indices = list(range(n_neighbor))
         elif n_neighbor > sample_num:
             sampled_indices = np.random.choice(list(range(n_neighbor)), size=sample_num, replace=False)
+        elif sample_num % n_neighbor == 0:
+            sampled_indices = []
+            for i in range(sample_num//n_neighbor):
+                sampled_indices += list(range(n_neighbor))
         else:
             sampled_indices = np.random.choice(list(range(n_neighbor)), size=sample_num, replace=True)
         adj_entity[entity] = np.array([neighbor[i] for i in sampled_indices])
@@ -76,32 +80,32 @@ class Data(Dataset):
         adj_entity = np.zeros([max_n_node, config.sample_num], dtype=np.int64)
         for i in range(max_n_node):
             neighbor = []
-            assert len(neighbor) <= config.sample_num
-            cnt = 0
-            for j in range(i-70,i+70):
-                if j < 0 or j == i or j >= len(items) or items[i] == 0 or items[j]==0:
-                    continue
-                x = tuple(sorted([items[i], items[j]]))
-                if x not in self.seq2idx.keys():
-                    cnt += 1
-                else:
-                    neighbor.append([self.seq2idx[x],self.seq2fre[x]])
+#             assert len(neighbor) <= config.sample_num
+#             cnt = 0
+#             for j in range(i-70,i+70):
+#                 if j < 0 or j == i or j >= len(items) or items[i] == 0 or items[j]==0:
+#                     continue
+#                 x = tuple(sorted([items[i], items[j]]))
+#                 if x not in self.seq2idx.keys():
+#                     cnt += 1
+#                 else:
+#                     neighbor.append([self.seq2idx[x],self.seq2fre[x]])
 
-            neighbor = [v[0] for v in sorted(neighbor, key = lambda x:x[1], reverse=True)][0:]
+#             neighbor = [v[0] for v in sorted(neighbor, key = lambda x:x[1], reverse=True)][0:]
             len1 = len(self.adj[items[i]])
             len2 = len(neighbor)
             # if cnt:
             #     print(cnt,end=",")\
-            neighbor = list(copy.deepcopy(self.adj[items[i]]))+neighbor
+            neighbor = list(copy.deepcopy(self.adj[items[i]]))#+neighbor
             n_neighbor = len(neighbor)
             if n_neighbor == 0:
                 continue
-            p = [4 for _ in range(len1)] + [1 for _ in range(len2)]
-            p /= np.sum(p)
+#             p = [4 for _ in range(len1)] + [1 for _ in range(len2)]
+#             p /= np.sum(p)
             if n_neighbor >= config.sample_num:
-                adj_entity[i] = np.random.choice(neighbor, size=config.sample_num, replace=False, p=p)
+                adj_entity[i] = np.random.choice(neighbor, size=config.sample_num, replace=False)
             else:
-                adj_entity[i] = np.random.choice(neighbor, size=config.sample_num, replace=True, p=p)  
+                adj_entity[i] = np.random.choice(neighbor, size=config.sample_num, replace=True)  
             # adj_entity[i] = np.array(list(self.adj[items[i]])+list(neighbor)+[0 for _ in range(config.sample_num-n_neighbor)])
 
         return [torch.tensor(alias_inputs), torch.tensor(adj), torch.tensor(items),

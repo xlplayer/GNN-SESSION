@@ -31,7 +31,7 @@ def trans_to_cpu(variable):
         return variable
 
 
-def forward(model, data):
+def forward(model, data, epoch):
     alias_inputs, adj, items, mask, targets, inputs, first_adj = data
     alias_inputs = trans_to_cuda(alias_inputs).long()
     items = trans_to_cuda(items).long()
@@ -43,10 +43,13 @@ def forward(model, data):
     hidden,hiddem_emb = model(items, adj, mask, inputs, first_adj)
     get = lambda index: hidden[index][alias_inputs[index]]
     seq_hidden = torch.stack([get(i) for i in torch.arange(len(alias_inputs)).long()])
-    return targets, model.compute_scores(seq_hidden +hiddem_emb, mask)
+    if epoch <=-1:
+        return targets, model.compute_scores(seq_hidden, mask)
+    else:
+        return targets, model.compute_scores(seq_hidden +hiddem_emb, mask)
 
 
-def train_test(model, train_data, test_data):
+def train_test(model, train_data, test_data, epoch):
     print('start training: ', datetime.datetime.now())
     model.train()
     total_loss = 0.0
@@ -54,7 +57,7 @@ def train_test(model, train_data, test_data):
                                                shuffle=True, pin_memory=True)
     for data in tqdm(train_loader):
         model.optimizer.zero_grad()
-        targets, scores = forward(model, data)
+        targets, scores = forward(model, data, epoch)
         targets = trans_to_cuda(targets).long()
         loss = model.loss_function(scores, targets - 1)
         loss.backward()
@@ -70,7 +73,7 @@ def train_test(model, train_data, test_data):
     result = []
     hit20, mrr20 = [], []
     for data in test_loader:
-        targets, scores = forward(model, data)
+        targets, scores = forward(model, data, epoch)
         sub_scores = scores.topk(20)[1]
         sub_scores = trans_to_cpu(sub_scores).detach().numpy()
         targets = targets.numpy()
@@ -83,7 +86,7 @@ def train_test(model, train_data, test_data):
 
     hit10, mrr10 = [], []
     for data in test_loader:
-        targets, scores = forward(model, data)
+        targets, scores = forward(model, data, epoch)
         sub_scores = scores.topk(10)[1]
         sub_scores = trans_to_cpu(sub_scores).detach().numpy()
         targets = targets.numpy()
@@ -102,7 +105,7 @@ def train_test(model, train_data, test_data):
     return result
 
 if __name__ == "__main__":
-    print(config.dataset, config.num_node, "lr_dc:",config.lr_dc, "lr_dc_step:",config.lr_dc_step, "dropout_gcn:", config.dropout_gcn, "dropout_local:",config.dropout_local)
+    print(config.dataset, config.num_node, "lr_dc:",config.lr_dc, "lr_dc_step:",config.lr_dc_step, "dropout_gcn:", config.dropout_gcn, "dropout_local:",config.dropout_local, "max_relative_position:",config.max_relative_position)
     init_seed(2021)
 
     train_data = pickle.load(open('datasets/' + config.dataset + '/train.txt', 'rb'))
@@ -115,7 +118,7 @@ if __name__ == "__main__":
     train_data = Data(adj, seq2fre, seq2idx, train_data)
     test_data = Data(adj, seq2fre, seq2idx, test_data)
 
-    adj = handle_adj(adj, 2)
+    adj = handle_adj(adj, 12)
     print(len(adj))
     model = trans_to_cuda(SessionGraph(trans_to_cuda(torch.Tensor(adj)).long()))
 
@@ -127,7 +130,7 @@ if __name__ == "__main__":
     for epoch in range(config.epoch):
         print('-------------------------------------------------------')
         print('epoch: ', epoch)
-        hit10, hit20, mrr10, mrr20 = train_test(model, train_data, test_data)
+        hit10, hit20, mrr10, mrr20 = train_test(model, train_data, test_data, epoch)
         flag = 0
         if hit10 >= best_result[0]:
             best_result[0] = hit10

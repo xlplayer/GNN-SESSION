@@ -80,10 +80,14 @@ class SessionGraph(nn.Module):
 
         
         # Parameters
-        self.max_relative_position = 2
+        self.k = nn.Embedding(self.num_node, config.dim)
+        self.q = nn.Embedding(self.num_node, config.dim)
+        self.max_relative_position = config.max_relative_position
         self.relative_position = RelativePosition(config.dim, self.max_relative_position)
+        self.relative_position_k = RelativePosition(config.dim, self.max_relative_position)
+        self.relative_position_v = RelativePosition(config.dim, self.max_relative_position)
         self.scale = torch.sqrt(torch.FloatTensor([config.dim])).cuda()
-        self.dropout = nn.Dropout(0.5)
+        self.dropout = nn.Dropout(config.dropout_attn)
         
         self.w_s = nn.Parameter(torch.Tensor(config.dim, 1))
         self.w_g = nn.Parameter(torch.Tensor(config.dim, 1))
@@ -111,6 +115,16 @@ class SessionGraph(nn.Module):
         return self.adj_all[target.view(-1)]
 
     def compute_scores(self, hidden, mask):
+#         batch_size = hidden.shape[0]
+#         seqs_len = hidden.shape[1]
+#         attn1 = torch.matmul(hidden, hidden.permute(0, 2, 1)) #b*s*s
+#         r_q2 = hidden.permute(1, 0, 2).contiguous().view(seqs_len, batch_size, config.dim) #s*b*h
+#         r_k2 = self.relative_position_k(seqs_len, seqs_len) #s*s*h
+#         attn2 = torch.matmul(r_q2, r_k2.transpose(1, 2)).transpose(0, 1) #b*s*s
+#         attn = (attn1 + attn2) / self.scale
+#         attn = self.dropout(torch.softmax(attn, dim = -1))
+#         hidden = torch.matmul(attn,hidden)
+        
         mask = mask.float().unsqueeze(-1)
 
         batch_size = hidden.shape[0]
@@ -149,13 +163,33 @@ class SessionGraph(nn.Module):
         
         sum_item_emb = sum_item_emb.unsqueeze(-2) #b*1*h
         
+#         r_q1 = self.q(inputs) #b*s_q*h
+#         r_k1 = self.k(inputs) #b*s_k*h
+#         attn1 = torch.matmul(r_q1, r_k1.permute(0, 2, 1)) #b*s_q*s_k
+#         r_q2 = r_q1.permute(1, 0, 2).contiguous().view(seqs_len, batch_size, config.dim) #s_q*b*h
+#         r_k2 = self.relative_position_k(seqs_len, seqs_len) #s_q*s_k*h
+#         attn2 = torch.matmul(r_q2, r_k2.transpose(1, 2)).transpose(0, 1) #b*s_q*s_k
+#         attn = (attn1 + attn2) / self.scale
+#         attn = self.dropout(torch.softmax(attn, dim = -1))
+
+#         r_v1 = item_emb
+#         weight1 = torch.matmul(attn, r_v1) #b*s*h
+#         r_v2 = self.relative_position_v(seqs_len, seqs_len)#s_q*s_v*h
+#         weight2 = attn.permute(1, 0, 2)#s_q*b*s_k
+#         weight2 = torch.matmul(weight2, r_v2)#s*b*h
+#         weight2 = weight2.transpose(0, 1)#b*s*h
+#         output_emb = weight1 + weight2
+        
+#         """
         attn1 = torch.matmul(item_emb, item_emb.permute(0, 2, 1)) #b*s*s
         r_q2 = item_emb.permute(1, 0, 2).contiguous().view(seqs_len, batch_size, config.dim) #s*b*h
-        r_k2 = self.relative_position(seqs_len, seqs_len) #s*s*h
+        r_k2 = self.relative_position_k(seqs_len, seqs_len) #s*s*h
         attn2 = torch.matmul(r_q2, r_k2.transpose(1, 2)).transpose(0, 1) #b*s*s
         attn = (attn1 + attn2) / self.scale
+#         attn = attn1 / self.scale
         attn = self.dropout(torch.softmax(attn, dim = -1))
         output_emb = torch.matmul(attn,item_emb)
+#         """
         
         # first_adj_unsqueeze = torch.unsqueeze(first_adj, -1) #b*s*l*1
         # first_adj_pad = torch.cat([torch.zeros_like(first_adj_unsqueeze), first_adj_unsqueeze], dim=-1) #b*s*l*2
@@ -167,7 +201,7 @@ class SessionGraph(nn.Module):
         # first_adj = torch.sum(first_adj_pad * y_hard, dim=-1) #b*s*l
         # first_adj = first_adj.long()
 
-        neighbor_num = [config.sample_num, 2]
+        neighbor_num = [config.sample_num, 12]
         support_size = seqs_len * neighbor_num[0]
         item_neighbors = [inputs, first_adj.view(batch_size, support_size)]
 
